@@ -1,24 +1,22 @@
+#include "vision/visionmodule.h"
 #include <opencv2/opencv.hpp>
-#include <iostream>
 
 int main() {
-    cv::VideoCapture cap(0);
-    if (!cap.isOpened()) {
-        std::cerr << "ERROR: Cannot open camera\n";
-        return -1;
-    }
+    VisionModule vision("/Users/gaurangjindal/Desktop/multimodal-agent-cpp/models/yolov8n.onnx");
+
+    if (!vision.init()) return -1;
+
+    cv::VideoCapture cap(0, cv::CAP_AVFOUNDATION);
+    if (!cap.isOpened()) return -1;
 
     cv::Mat frame;
-    std::cout << "Press ESC to quit\n";
-
     while (true) {
         cap >> frame;
-        if (frame.empty()) break;
+        auto dets = vision.detect(frame);
+        vision.drawDetections(frame, dets);
 
-        cv::imshow("Webcam Test", frame);
-        int key = cv::waitKey(1);
-        if (key == 27) break; // ESC
+        cv::imshow("Detections", frame);
+        if (cv::waitKey(1) == 27) break; // ESC
     }
     return 0;
 }
-
