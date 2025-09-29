@@ -25,6 +25,14 @@ public:
     void stopListening();
     bool isListening() const { return isListening_; }
     
+    // Push-to-talk mode
+    void startRecording();  // Start recording (spacebar pressed)
+    void stopRecording();   // Stop and process (spacebar released)
+    bool isRecording() const { return isRecording_; }
+    
+    // Get current audio level (for visualization)
+    float getCurrentAudioLevel() const;
+    
     // Get the latest transcribed text
     std::string getLatestTranscript();
     bool hasNewTranscript();
@@ -51,6 +59,7 @@ private:
     // Threading
     std::atomic<bool> isListening_;
     std::atomic<bool> shouldStop_;
+    std::atomic<bool> isRecording_;  // Push-to-talk recording state
     std::thread captureThread_;
     
     // Transcript management
@@ -61,6 +70,7 @@ private:
     // Audio buffer
     std::vector<float> audioBuffer_;
     std::mutex bufferMutex_;
+    std::atomic<float> currentAudioLevel_;  // For real-time level display
     
     // Settings
     float vadThreshold_;

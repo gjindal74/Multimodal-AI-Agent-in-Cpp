@@ -143,9 +143,11 @@ int main() {
     float avgFPS = 0;
     
     std::cout << "\n=== Multimodal Agent Running ===" << std::endl;
-    std::cout << "Press ESC to quit, 's' to save screenshot, 'm' to toggle audio" << std::endl;
-    std::cout << "Press 'SPACE' to manually trigger audio processing" << std::endl;
+    std::cout << "Press ESC to quit, 's' to save screenshot" << std::endl;
+    std::cout << "🎤 Press SPACE to START recording, press SPACE again to STOP & transcribe" << std::endl;
     std::cout << "Speak commands and they will appear on screen\n" << std::endl;
+    
+    bool isRecording = false;
     
     while (true) {
         cap >> frame;
@@ -179,10 +181,27 @@ int main() {
         std::string countText = "Objects: " + std::to_string(smoothedDetections.size());
         cv::putText(frame, countText, cv::Point(10, 70), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
 
-        // Display audio status
-        std::string audioStatus = audio.isListening() ? "🎤 Listening" : "🎤 Muted";
-        cv::Scalar audioColor = audio.isListening() ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
-        cv::putText(frame, audioStatus, cv::Point(10, 110), cv::FONT_HERSHEY_SIMPLEX, 1.0, audioColor, 2);
+        // Display audio status with level meter
+        std::string audioStatus = audio.isRecording() ? "🔴 RECORDING (press SPACE to stop)" : "🎤 Ready (press SPACE to record)";
+        cv::Scalar audioColor = audio.isRecording() ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0);
+        cv::putText(frame, audioStatus, cv::Point(10, 110), cv::FONT_HERSHEY_SIMPLEX, 0.6, audioColor, 2);
+        
+        // Show audio level meter when recording
+        if (audio.isRecording()) {
+            float level = audio.getCurrentAudioLevel();
+            int barWidth = static_cast<int>(level * 500); // Scale for visibility
+            barWidth = std::min(barWidth, 400); // Cap at 400 pixels
+            
+            // Draw level bar
+            cv::rectangle(frame, cv::Point(10, 140), cv::Point(10 + barWidth, 160), 
+                         cv::Scalar(0, 255, 0), cv::FILLED);
+            cv::rectangle(frame, cv::Point(10, 140), cv::Point(410, 160), 
+                         cv::Scalar(255, 255, 255), 2);
+            
+            // Show level value
+            std::string levelText = "Level: " + std::to_string(static_cast<int>(level * 100));
+            cv::putText(frame, levelText, cv::Point(420, 155), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
+        }
         
         // Display latest command
         if (!latestCommand.empty()) {
@@ -201,19 +220,25 @@ int main() {
         cv::imshow("Multimodal Agent", frame);
         
         char key = cv::waitKey(1);
+        
+        // Toggle recording with spacebar
+        if (key == ' ' || key == 32) { // Spacebar
+            if (!isRecording) {
+                audio.startRecording();
+                isRecording = true;
+            } else {
+                audio.stopRecording();
+                isRecording = false;
+            }
+            // Small delay to avoid double-trigger
+            cv::waitKey(200);
+        }
+        
+        // Other controls
         if (key == 27) break; // ESC
         if (key == 's') {
             cv::imwrite("agent_screenshot.jpg", frame);
             std::cout << "Screenshot saved!" << std::endl;
-        }
-        if (key == 'm') {
-            if (audio.isListening()) {
-                audio.stopListening();
-                std::cout << "Audio muted" << std::endl;
-            } else {
-                audio.startListening();
-                std::cout << "Audio unmuted" << std::endl;
-            }
         }
     }
     

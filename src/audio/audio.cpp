@@ -7,8 +7,8 @@
 
 AudioModule::AudioModule(const std::string& modelPath)
     : modelPath_(modelPath), ctx_(nullptr), isListening_(false),
-      shouldStop_(false), vadThreshold_(0.01f), sampleRate_(16000),
-      bufferSizeMs_(3000), transcriptCount_(0) {
+      shouldStop_(false), isRecording_(false), vadThreshold_(0.01f), sampleRate_(16000),
+      bufferSizeMs_(3000), transcriptCount_(0), currentAudioLevel_(0.0f) {
     audioBuffer_.reserve(sampleRate_ * bufferSizeMs_ / 1000);
 }
 
@@ -77,6 +77,41 @@ void AudioModule::stopListening() {
     std::cout << "Stopped listening" << std::endl;
 }
 
+void AudioModule::startRecording() {
+    if (!isListening_) {
+        std::cout << "Cannot record: audio module not listening" << std::endl;
+        return;
+    }
+    
+    if (isRecording_) return;
+    
+    std::lock_guard<std::mutex> lock(bufferMutex_);
+    audioBuffer_.clear();
+    isRecording_ = true;
+    std::cout << "🔴 Recording started (hold SPACE)..." << std::endl;
+}
+
+void AudioModule::stopRecording() {
+    if (!isRecording_) return;
+    
+    isRecording_ = false;
+    std::cout << "⏹️  Recording stopped, processing..." << std::endl;
+    
+    // Copy buffer and process
+    std::vector<float> recordedAudio;
+    {
+        std::lock_guard<std::mutex> lock(bufferMutex_);
+        recordedAudio = audioBuffer_;
+        audioBuffer_.clear();
+    }
+    
+    if (!recordedAudio.empty()) {
+        processAudioBuffer(recordedAudio);
+    } else {
+        std::cout << "No audio recorded" << std::endl;
+    }
+}
+
 void AudioModule::audioThread() {
     PaStream* stream = nullptr;
     PaStreamParameters inputParams;
@@ -115,18 +150,10 @@ void AudioModule::audioThread() {
     
     std::cout << "Audio stream started successfully" << std::endl;
     
-    // Capture loop
+    // Capture loop - simplified for push-to-talk
     const int framesPerRead = sampleRate_ / 10;  // 100ms chunks
     std::vector<float> tempBuffer(framesPerRead);
-    std::vector<float> recordingBuffer;
-    bool isRecording = false;
-    int silenceFrames = 0;
-    const int maxSilenceFrames = 10;  // 2 seconds of silence
     const float audioGain = 100.0f;  // Amplify audio by 100x
-    
-    // Dynamic silence threshold
-    float dynamicSilenceThreshold = vadThreshold_;
-    float maxEnergySeen = 0.0f;
     
     while (!shouldStop_) {
         // Read audio data
@@ -145,49 +172,18 @@ void AudioModule::audioThread() {
             if (sample < -1.0f) sample = -1.0f;
         }
         
-        // Calculate current energy
+        // Calculate and store current audio level for visualization
         float energy = 0.0f;
         for (float sample : tempBuffer) {
             energy += sample * sample;
         }
-        energy /= tempBuffer.size();
+        energy = std::sqrt(energy / tempBuffer.size());
+        currentAudioLevel_ = energy;
         
-        // Update max energy and dynamic threshold
-        if (energy > maxEnergySeen) {
-            maxEnergySeen = energy;
-            dynamicSilenceThreshold = maxEnergySeen * 0.1f;  // Silence = 10% of max speech
-        }
-        
-        // Check for voice activity using dynamic threshold
-        bool hasVoice = (energy > vadThreshold_ && energy > dynamicSilenceThreshold);
-        
-        if (hasVoice) {
-            if (!isRecording) {
-                std::cout << "✓ Voice detected, recording..." << std::endl;
-                isRecording = true;
-                recordingBuffer.clear();
-            }
-            recordingBuffer.insert(recordingBuffer.end(), tempBuffer.begin(), tempBuffer.end());
-            silenceFrames = 0;
-        } else if (isRecording) {
-            recordingBuffer.insert(recordingBuffer.end(), tempBuffer.begin(), tempBuffer.end());
-            silenceFrames++;
-            
-            // Debug: Show silence countdown with energy info
-            if (silenceFrames % 5 == 0) {
-                std::cout << "  Silence frames: " << silenceFrames << "/" << maxSilenceFrames 
-                         << " (energy: " << energy << ", threshold: " << dynamicSilenceThreshold << ")" << std::endl;
-            }
-            
-            // If silence detected for too long, process the recording
-            if (silenceFrames > maxSilenceFrames) {
-                std::cout << "✓ Silence detected, processing audio (" 
-                         << recordingBuffer.size() / sampleRate_ << "s)" << std::endl;
-                processAudioBuffer(recordingBuffer);
-                isRecording = false;
-                recordingBuffer.clear();
-                silenceFrames = 0;
-            }
+        // If recording (spacebar held), accumulate audio
+        if (isRecording_) {
+            std::lock_guard<std::mutex> lock(bufferMutex_);
+            audioBuffer_.insert(audioBuffer_.end(), tempBuffer.begin(), tempBuffer.end());
         }
     }
     
@@ -222,7 +218,18 @@ void AudioModule::processAudioBuffer(const std::vector<float>& audioData) {
         return;
     }
     
-    std::cout << "Processing audio with Whisper..." << std::endl;
+    // Require at least 0.5 seconds of audio
+    const float minDurationSec = 0.5f;
+    const int minSamples = static_cast<int>(sampleRate_ * minDurationSec);
+    
+    if (audioData.size() < minSamples) {
+        std::cout << "Audio too short (" << audioData.size() / sampleRate_ 
+                  << "s), need at least " << minDurationSec << "s" << std::endl;
+        return;
+    }
+    
+    std::cout << "Processing audio with Whisper (" 
+              << audioData.size() / sampleRate_ << "s)..." << std::endl;
     
     // Prepare Whisper parameters
     struct whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
@@ -233,7 +240,9 @@ void AudioModule::processAudioBuffer(const std::vector<float>& audioData) {
     wparams.translate = false;
     wparams.language = "en";
     wparams.n_threads = 4;
-    wparams.suppress_blank = true;
+    wparams.suppress_blank = false;  // Don't suppress blanks
+    wparams.no_speech_thold = 0.3f;   // Lower threshold (was 0.6 default)
+    wparams.entropy_thold = 2.0f;     // Lower entropy threshold
     
     // Run inference
     int ret = whisper_full(ctx_, wparams, audioData.data(), audioData.size());
@@ -295,4 +304,8 @@ bool AudioModule::hasNewTranscript() {
 
 void AudioModule::setTranscriptCallback(std::function<void(const std::string&)> callback) {
     transcriptCallback_ = callback;
+}
+
+float AudioModule::getCurrentAudioLevel() const {
+    return currentAudioLevel_;
 }
