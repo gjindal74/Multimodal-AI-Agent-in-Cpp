@@ -112,9 +112,9 @@ std::vector<Detection> VisionModule::detect(const cv::Mat& frame) {
         auto shape = output[0].GetTensorTypeAndShapeInfo().GetShape();
 
         // Debug output (remove in production)
-        std::cout << "YOLO Output Shape: [";
+       /* std::cout << "YOLO Output Shape: [";
         for (auto s : shape) std::cout << s << " ";
-        std::cout << "]" << std::endl;
+        std::cout << "]" << std::endl;*/
 
         int64_t batch = shape[0];
         int64_t numAttrs = shape[1]; // 84
@@ -212,18 +212,13 @@ std::vector<Detection> VisionModule::detect(const cv::Mat& frame) {
                         candidates.push_back({cv::Rect(left, top, width, height), maxScore, classId});
                         
                         // Debug: Print detection info for all classes now
-                        if (maxScore > 0.3f || classId != 0) { // Show non-person detections even with lower confidence
-                            std::cout << "Detection: " << COCO_CLASSES[classId] << " " 
-                                      << maxScore << " [" << left << "," << top << "," 
-                                      << width << "," << height << "] area_ratio=" << areaRatio 
-                                      << " threshold=" << classThreshold << std::endl;
-                        }
+                        
                     }
                 }
             }
         }
 
-        std::cout << "Candidates before NMS: " << candidates.size() << std::endl;
+        
 
         // Enhanced Non-Maximum Suppression with class-specific handling
         std::sort(candidates.begin(), candidates.end(),
@@ -265,7 +260,7 @@ std::vector<Detection> VisionModule::detect(const cv::Mat& frame) {
             }
         }
         
-        std::cout << "Final detections: " << results.size() << std::endl;
+        
         
     } catch (const Ort::Exception& e) {
         std::cerr << "Inference failed: " << e.what() << std::endl;
@@ -275,7 +270,7 @@ std::vector<Detection> VisionModule::detect(const cv::Mat& frame) {
 }
 
 void VisionModule::drawDetections(cv::Mat& frame, const std::vector<Detection>& detections) {
-    std::cout << "Drawing " << detections.size() << " detections" << std::endl;
+    
     
     for (const auto& det : detections) {
         // Class-specific colors for better visualization
@@ -321,8 +316,6 @@ void VisionModule::drawDetections(cv::Mat& frame, const std::vector<Detection>& 
         cv::putText(frame, text, textOrg, cv::FONT_HERSHEY_SIMPLEX, fontScale,
                     cv::Scalar(255, 255, 255), 2);
                     
-        std::cout << "Drew box for " << det.label << " (conf: " << det.score 
-                  << ") at [" << det.box.x << "," << det.box.y << "," 
-                  << det.box.width << "," << det.box.height << "]" << std::endl;
+        
     }
 }

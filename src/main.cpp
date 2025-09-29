@@ -1,4 +1,5 @@
 #include "vision/visionmodule.h"
+#include "../include/audio.h"
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <map>
@@ -94,20 +95,41 @@ public:
 };
 
 int main() {
+    // Initialize Vision Module
     VisionModule vision("/Users/gaurangjindal/Desktop/multimodal-agent-cpp/models/yolov8n.onnx");
-
     if (!vision.init()) {
         std::cerr << "Failed to initialize vision module" << std::endl;
         return -1;
     }
 
+    // Initialize Audio Module
+    AudioModule audio("/Users/gaurangjindal/Desktop/multimodal-agent-cpp/models/ggml-base.en.bin");
+    if (!audio.init()) {
+        std::cerr << "Failed to initialize audio module" << std::endl;
+        return -1;
+    }
+
+    // Set up transcript callback
+    std::string latestCommand;
+    audio.setTranscriptCallback([&latestCommand](const std::string& transcript) {
+        std::cout << "\n🎤 Voice Command: " << transcript << "\n" << std::endl;
+        latestCommand = transcript;
+    });
+
+    // Lower VAD threshold for better voice detection (experiment with values)
+    audio.setVADThreshold(0.0000001f);  // 1e-7, much more sensitive
+    
+    // Start audio listening
+    audio.startListening();
+
+    // Open camera
     cv::VideoCapture cap(0, cv::CAP_AVFOUNDATION);
     if (!cap.isOpened()) {
         std::cerr << "Failed to open camera" << std::endl;
         return -1;
     }
     
-    // Set camera properties for better performance
+    // Set camera properties
     cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280);
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
     cap.set(cv::CAP_PROP_FPS, 30);
@@ -119,6 +141,11 @@ int main() {
     auto lastTime = std::chrono::high_resolution_clock::now();
     int frameCount = 0;
     float avgFPS = 0;
+    
+    std::cout << "\n=== Multimodal Agent Running ===" << std::endl;
+    std::cout << "Press ESC to quit, 's' to save screenshot, 'm' to toggle audio" << std::endl;
+    std::cout << "Press 'SPACE' to manually trigger audio processing" << std::endl;
+    std::cout << "Speak commands and they will appear on screen\n" << std::endl;
     
     while (true) {
         cap >> frame;
@@ -138,13 +165,13 @@ int main() {
         auto currentTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastTime);
         
-        if (duration.count() > 1000) { // Update every second
+        if (duration.count() > 1000) {
             avgFPS = frameCount * 1000.0f / duration.count();
             frameCount = 0;
             lastTime = currentTime;
         }
         
-        // Display FPS on frame
+        // Display FPS
         std::string fpsText = "FPS: " + std::to_string(static_cast<int>(avgFPS));
         cv::putText(frame, fpsText, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
         
@@ -152,16 +179,45 @@ int main() {
         std::string countText = "Objects: " + std::to_string(smoothedDetections.size());
         cv::putText(frame, countText, cv::Point(10, 70), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
 
-        cv::imshow("Enhanced Detections", frame);
+        // Display audio status
+        std::string audioStatus = audio.isListening() ? "🎤 Listening" : "🎤 Muted";
+        cv::Scalar audioColor = audio.isListening() ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
+        cv::putText(frame, audioStatus, cv::Point(10, 110), cv::FONT_HERSHEY_SIMPLEX, 1.0, audioColor, 2);
+        
+        // Display latest command
+        if (!latestCommand.empty()) {
+            std::string cmdText = "Command: " + latestCommand;
+            // Add background for better readability
+            int baseline = 0;
+            cv::Size textSize = cv::getTextSize(cmdText, cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+            cv::rectangle(frame, 
+                         cv::Point(10, frame.rows - 50),
+                         cv::Point(20 + textSize.width, frame.rows - 50 + textSize.height + 10),
+                         cv::Scalar(0, 0, 0), cv::FILLED);
+            cv::putText(frame, cmdText, cv::Point(15, frame.rows - 30), 
+                       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 0), 2);
+        }
+
+        cv::imshow("Multimodal Agent", frame);
         
         char key = cv::waitKey(1);
         if (key == 27) break; // ESC
-        if (key == 's') { // Save screenshot
-            cv::imwrite("detection_screenshot.jpg", frame);
+        if (key == 's') {
+            cv::imwrite("agent_screenshot.jpg", frame);
             std::cout << "Screenshot saved!" << std::endl;
+        }
+        if (key == 'm') {
+            if (audio.isListening()) {
+                audio.stopListening();
+                std::cout << "Audio muted" << std::endl;
+            } else {
+                audio.startListening();
+                std::cout << "Audio unmuted" << std::endl;
+            }
         }
     }
     
+    audio.stopListening();
     cv::destroyAllWindows();
     return 0;
 }
