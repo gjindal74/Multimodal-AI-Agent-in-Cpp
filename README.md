@@ -18,21 +18,21 @@ This isn't your typical "call an API and hope for the best" AI project. This is 
 ## Technical Deep Dive
  ### Vision Module
 
-**Model:** YOLOv8n ONNX (6.2MB, 80 COCO classes)
-**Optimization:**
+- **Model:** YOLOv8n ONNX (6.2MB, 80 COCO classes)
+- **Optimization:**
 
 Hardware-accelerated inference via ONNX Runtime
 Custom NMS implementation with class-specific IoU thresholds
 Temporal smoothing with Kalman-inspired tracking
 
 
-**Performance:** 25-30 FPS on MacBook Pro M1, 15-20 FPS on CPU
-**Key Innovation:** Dynamic confidence thresholds per object class (person: 0.5, small objects: 0.2)
+- **Performance:** 25-30 FPS on MacBook Pro M1, 15-20 FPS on CPU
+- **Key Innovation:** Dynamic confidence thresholds per object class (person: 0.5, small objects: 0.2)
 
  ### Audio Module
 
-**Engine:** Whisper.cpp (base.en model, 150MB)
-**Features:**
+- **Engine:** Whisper.cpp (base.en model, 150MB)
+- **Features:**
 
 Real-time Voice Activity Detection (VAD) with adaptive thresholding
 Circular buffer management for continuous audio streaming
@@ -40,13 +40,13 @@ Multi-threaded PortAudio integration for non-blocking capture
 Dynamic gain control (100x amplification with clipping protection)
 
 
-**Latency:** 2-3s end-to-end (including 2s silence detection)
-**Key Innovation:** Energy-based VAD with dynamic threshold adaptation (10% of peak speech energy)
+- **Latency:** 2-3s end-to-end (including 2s silence detection)
+- **Key Innovation:** Energy-based VAD with dynamic threshold adaptation (10% of peak speech energy)
 
 ### LLM Reasoning Module
 
-**Planned:** llama.cpp integration for local inference
-**Context Window:** Combined vision detections + audio transcript → JSON action schema
+- **Planned:** llama.cpp integration for local inference
+- **Context Window:** Combined vision detections + audio transcript → JSON action schema
 
 ### Action Executor
 
