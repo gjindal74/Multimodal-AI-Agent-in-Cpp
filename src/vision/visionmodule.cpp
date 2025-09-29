@@ -165,7 +165,7 @@ std::vector<Detection> VisionModule::detect(const cv::Mat& frame) {
                 else classThreshold = 0.25f;
                 
                 if (maxScore > classThreshold) {
-                    // Convert from model coordinates (0-640) to original frame coordinates
+                    // Convert from model coordinates (0-640) to original frame coordinate
                     float centerX = x * scaleX;
                     float centerY = y * scaleY;
                     float boxWidth = w * scaleX;
