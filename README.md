@@ -65,9 +65,8 @@ sudo apt-get install cmake libopencv-dev portaudio19-dev pkg-config
 
 # Clone repository
 git clone https://github.com/gjindal74/Multimodal-AI-Agent-in-Cpp.git
-cd multimodal-agent-cpp
 
-# Setup dependencies
+# Setup dependencies if already not there
 mkdir -p third_party && cd third_party
 
 # Build Whisper.cpp
