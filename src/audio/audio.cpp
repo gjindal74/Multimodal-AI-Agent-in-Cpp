@@ -228,8 +228,36 @@ void AudioModule::processAudioBuffer(const std::vector<float>& audioData) {
         return;
     }
     
+    // Simple noise reduction: remove very quiet parts at beginning/end
+    std::vector<float> cleanedAudio = audioData;
+    const float noiseThreshold = 0.01f;
+    
+    // Trim silence from start
+    size_t startIdx = 0;
+    for (size_t i = 0; i < cleanedAudio.size(); i++) {
+        if (std::abs(cleanedAudio[i]) > noiseThreshold) {
+            startIdx = i;
+            break;
+        }
+    }
+    
+    // Trim silence from end
+    size_t endIdx = cleanedAudio.size();
+    for (size_t i = cleanedAudio.size(); i > 0; i--) {
+        if (std::abs(cleanedAudio[i-1]) > noiseThreshold) {
+            endIdx = i;
+            break;
+        }
+    }
+    
+    // Use trimmed audio
+    if (endIdx > startIdx) {
+        cleanedAudio = std::vector<float>(cleanedAudio.begin() + startIdx, 
+                                          cleanedAudio.begin() + endIdx);
+    }
+    
     std::cout << "Processing audio with Whisper (" 
-              << audioData.size() / sampleRate_ << "s)..." << std::endl;
+              << cleanedAudio.size() / sampleRate_ << "s)..." << std::endl;
     
     // Prepare Whisper parameters
     struct whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
@@ -244,8 +272,8 @@ void AudioModule::processAudioBuffer(const std::vector<float>& audioData) {
     wparams.no_speech_thold = 0.3f;   // Lower threshold (was 0.6 default)
     wparams.entropy_thold = 2.0f;     // Lower entropy threshold
     
-    // Run inference
-    int ret = whisper_full(ctx_, wparams, audioData.data(), audioData.size());
+    // Run inference on cleaned audio
+    int ret = whisper_full(ctx_, wparams, cleanedAudio.data(), cleanedAudio.size());
     
     if (ret != 0) {
         std::cerr << "Whisper inference failed" << std::endl;

@@ -103,7 +103,7 @@ int main() {
     }
 
     // Initialize Audio Module
-    AudioModule audio("/Users/gaurangjindal/Desktop/multimodal-agent-cpp/models/ggml-base.en.bin");
+    AudioModule audio("/Users/gaurangjindal/Desktop/multimodal-agent-cpp/models/ggml-small.en.bin");
     if (!audio.init()) {
         std::cerr << "Failed to initialize audio module" << std::endl;
         return -1;
