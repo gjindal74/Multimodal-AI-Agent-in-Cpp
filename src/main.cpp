@@ -1,5 +1,6 @@
 #include "vision/visionmodule.h"
 #include "../include/audio.h"
+#include "llm/llmmodule.h"
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <map>
@@ -109,11 +110,33 @@ int main() {
         return -1;
     }
 
-    // Set up transcript callback
+    // Initialize LLM Module
+    LLMModule llm("/Users/gaurangjindal/Desktop/multimodal-agent-cpp/models/llama-3.2-1b-q4.gguf");
+    if (!llm.init()) {
+        std::cerr << "Failed to initialize LLM module" << std::endl;
+        return -1;
+    }
+
+    // Set up transcript callback with LLM integration
     std::string latestCommand;
-    audio.setTranscriptCallback([&latestCommand](const std::string& transcript) {
+    std::string latestLLMResponse;
+    std::vector<std::string> currentDetections;
+    
+    audio.setTranscriptCallback([&latestCommand, &latestLLMResponse, &llm, &currentDetections](const std::string& transcript) {
         std::cout << "\n🎤 Voice Command: " << transcript << "\n" << std::endl;
         latestCommand = transcript;
+        
+        // Generate LLM response based on vision + audio context
+        std::string prompt = llm.buildContextPrompt(currentDetections, transcript);
+        auto response = llm.generate(prompt, 128);
+        
+        if (response.success) {
+            std::cout << "\n🤖 LLM Decision: " << response.text << "\n" << std::endl;
+            latestLLMResponse = response.text;
+        } else {
+            std::cerr << "LLM Error: " << response.error << std::endl;
+            latestLLMResponse = "Error: " + response.error;
+        }
     });
 
     // Lower VAD threshold for better voice detection (experiment with values)
@@ -158,6 +181,12 @@ int main() {
         
         // Apply tracking for smoother results
         auto smoothedDetections = tracker.updateTracks(detections);
+        
+        // Update current detections for LLM context
+        currentDetections.clear();
+        for (const auto& det : smoothedDetections) {
+            currentDetections.push_back(det.label);
+        }
         
         // Draw detections
         vision.drawDetections(frame, smoothedDetections);
@@ -210,11 +239,29 @@ int main() {
             int baseline = 0;
             cv::Size textSize = cv::getTextSize(cmdText, cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
             cv::rectangle(frame, 
+                         cv::Point(10, frame.rows - 90),
+                         cv::Point(20 + textSize.width, frame.rows - 90 + textSize.height + 10),
+                         cv::Scalar(0, 0, 0), cv::FILLED);
+            cv::putText(frame, cmdText, cv::Point(15, frame.rows - 70), 
+                       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 0), 2);
+        }
+        
+        // Display LLM response
+        if (!latestLLMResponse.empty()) {
+            // Truncate if too long
+            std::string llmText = "AI: " + latestLLMResponse;
+            if (llmText.length() > 80) {
+                llmText = llmText.substr(0, 77) + "...";
+            }
+            
+            int baseline = 0;
+            cv::Size textSize = cv::getTextSize(llmText, cv::FONT_HERSHEY_SIMPLEX, 0.6, 2, &baseline);
+            cv::rectangle(frame, 
                          cv::Point(10, frame.rows - 50),
                          cv::Point(20 + textSize.width, frame.rows - 50 + textSize.height + 10),
                          cv::Scalar(0, 0, 0), cv::FILLED);
-            cv::putText(frame, cmdText, cv::Point(15, frame.rows - 30), 
-                       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 0), 2);
+            cv::putText(frame, llmText, cv::Point(15, frame.rows - 30), 
+                       cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
         }
 
         cv::imshow("Multimodal Agent", frame);
